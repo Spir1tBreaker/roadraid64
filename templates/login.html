@@ -27,37 +27,28 @@
       color: #222;
       margin-top: 0;
     }
-    input {
-      width: 100%;
-      padding: 10px;
-      margin: 12px 0;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      font-size: 16px;
-    }
-    button {
-      background: #2196F3;
-      color: white;
-      border: none;
-      padding: 12px 20px;
-      border-radius: 6px;
-      font-size: 16px;
-      cursor: pointer;
-      width: 100%;
-    }
-    button:hover {
-      background: #1976D2;
+    p {
+      color: #666;
+      margin: 20px 0;
     }
   </style>
 </head>
 <body>
   <div class="login-box">
     <h2>Raidroad64</h2>
-    <p>Введите ваше имя или Telegram-ник</p>
-    <form method="POST" action="/login">
-      <input type="text" name="username" placeholder="@ваш_ник" required minlength="2" maxlength="30">
-      <button type="submit">Продолжить</button>
-    </form>
+    <p>Войдите через Telegram,<br>чтобы отмечать ДПС и получать SOS-помощь</p>
+
+    <!-- Telegram Login Widget -->
+    <script
+      async
+      src="https://telegram.org/js/telegram-widget.js?22"
+      data-telegram-login="raidroad64_bot"
+      data-size="large"
+      data-radius="8"
+      data-userpic="true"
+      data-request-access="write"
+      data-auth-url="/login/telegram">
+    </script>
   </div>
 </body>
 </html>
