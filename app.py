@@ -68,10 +68,9 @@ def login():
 
 
 @app.route('/login/telegram', methods=['POST'])
+@app.route('/login/telegram', methods=['POST'])
 def telegram_login():
-    # Получаем "тело" запроса как строку
-    body_str = request.get_data(as_text=True)
-    data = dict(parse_qsl(body_str))
+    data = dict(parse_qsl(request.get_data(as_text=True)))
 
     # Проверка подписи
     if not verify_telegram_data(data):
