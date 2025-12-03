@@ -1,0 +1,380 @@
+<<<<<<< HEAD
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Raidroad64 — карта ДПС Саратова</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU" type="text/javascript"></script>
+</head>
+<body>
+  <!-- Кнопка меню -->
+  <div class="menu-toggle-wrapper" id="menuToggle">
+    <div class="menu-toggle">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+  </div>
+
+  <!-- Боковое меню -->
+  <div class="sidebar" id="sidebar">
+    <div class="user-profile">
+      <h3 id="menu-username">Загрузка...</h3>
+      <p id="menu-level">Lv.1</p>
+    </div>
+    <button class="menu-btn sos" id="sosBtn">🚨 SOS</button>
+    <button class="menu-btn" id="leaderboardBtn">🏆 Таблица лидеров</button>
+    <button class="menu-btn" id="newsBtn">📰 Новости</button>
+  </div>
+
+  <!-- Затемнение -->
+  <div class="overlay" id="overlay"></div>
+
+  <!-- Основной контент -->
+  <div class="header">
+    <h1>Raidroad64</h1>
+    <p>Привет, <span id="user-name"></span>!</p>
+  </div>
+  <div id="map"></div>
+
+  <div id="report-form" style="display:none;">
+    <h3>Добавить метку</h3>
+    <p>Вы уверены, что здесь ДПС?</p>
+    <button id="confirm-btn">✅ Да, добавить</button>
+    <button id="cancel-btn">❌ Отмена</button>
+  </div>
+
+  <script>
+    let map, selectedCoord = null;
+    let placemarks = {};
+
+    // Авторизация
+    fetch('/api/user')
+      .then(res => {
+        if (res.status === 401) {
+          window.location.href = '/login';
+        } else {
+          return res.json();
+        }
+      })
+      .then(data => {
+        if (data) {
+          document.getElementById('user-name').textContent =
+            data.username + (data.trust_level > 1 ? ` (Lv.${data.trust_level})` : '');
+          document.getElementById('menu-username').textContent = data.username;
+          document.getElementById('menu-level').textContent = `Lv.${data.trust_level || 1}`;
+          ymaps.ready(initMap);
+        }
+      });
+
+    function initMap() {
+      map = new ymaps.Map("map", {
+        center: [51.540497, 46.008789],
+        zoom: 11,
+        controls: ['zoomControl']
+      });
+
+      loadReports();
+      setInterval(loadReports, 30000);
+
+      map.events.add('click', function (e) {
+        selectedCoord = e.get('coords');
+        document.getElementById('report-form').style.display = 'block';
+      });
+
+      document.getElementById('confirm-btn').onclick = function() {
+        if (!selectedCoord) return;
+        fetch('/api/report', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ lat: selectedCoord[0], lon: selectedCoord[1] })
+        }).then(() => {
+          document.getElementById('report-form').style.display = 'none';
+          loadReports();
+        });
+      };
+
+      document.getElementById('cancel-btn').onclick = function() {
+        document.getElementById('report-form').style.display = 'none';
+      };
+    }
+
+    function loadReports() {
+      for (let id in placemarks) map.geoObjects.remove(placemarks[id]);
+      placemarks = {};
+
+      fetch('/api/reports')
+        .then(res => res.json())
+        .then(reports => {
+          reports.forEach(r => {
+            const timeDiff = new Date() - new Date(r.timestamp || '2025-01-01');
+            const hoursAgo = timeDiff / (1000 * 60 * 60);
+            let color = '#888';
+            if (hoursAgo <= 0.5) color = '#ff0000';
+            else if (hoursAgo <= 1.5) color = '#ffcc00';
+            else if (hoursAgo <= 2) color = '#00aa00';
+
+            const trustBadge = r.trust_level > 1 ? ` Lv.${r.trust_level}` : '';
+            const content = `
+              <div style="background:white; padding:6px; border-radius:6px; font-size:12px; min-width:120px;">
+                <b>${r.username}${trustBadge}</b><br>
+                <small>${r.time_str}</small><br>
+                <div style="margin-top:6px; display:flex; gap:4px;">
+                  <button onclick="vote(${r.id}, 'like')" style="flex:1; background:#4CAF50; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">👍 ${r.likes}</button>
+                  <button onclick="vote(${r.id}, 'gone')" style="flex:1; background:#ff9800; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">🚗 ${r.gone_count}</button>
+                </div>
+              </div>
+            `;
+
+            const placemark = new ymaps.Placemark([r.lat, r.lon], { balloonContent: content }, {
+              preset: 'islands#circleIcon',
+              iconColor: color
+            });
+
+            fetch('/api/user').then(res => res.json()).then(user => {
+              if (user.username === r.username) {
+                const deleteBtn = `<br><button onclick="deleteReport(${r.id})" style="margin-top:6px; background:#f44336; color:white; border:0; padding:2px 6px; border-radius:3px; font-size:10px; width:100%;">Удалить</button>`;
+                placemark.properties.set('balloonContent', content + deleteBtn);
+              }
+            });
+
+            placemarks[r.id] = placemark;
+            map.geoObjects.add(placemark);
+          });
+        });
+    }
+
+    function vote(reportId, type) {
+      fetch('/api/vote', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ report_id: reportId, type: type })
+      }).then(res => res.json()).then(data => {
+        if (data.status === 'voted') loadReports();
+        else alert('Уже голосовали');
+      });
+    }
+
+    function deleteReport(reportId) {
+      if (confirm('Удалить?')) {
+        fetch(`/api/report/${reportId}`, { method: 'DELETE' })
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'deleted') loadReports();
+            else alert('Ошибка');
+          });
+      }
+    }
+
+    // === Меню ===
+    document.getElementById('menuToggle').addEventListener('click', () => {
+      document.getElementById('sidebar').classList.add('active');
+      document.getElementById('overlay').classList.add('active');
+    });
+
+    document.getElementById('overlay').addEventListener('click', () => {
+      document.getElementById('sidebar').classList.remove('active');
+      document.getElementById('overlay').classList.remove('active');
+    });
+
+    document.querySelectorAll('.menu-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        this.style.transform = 'scale(0.97)';
+        setTimeout(() => this.style.transform = '', 150);
+      });
+    });
+  </script>
+</body>
+=======
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Raidroad64 — карта ДПС Саратова</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU" type="text/javascript"></script>
+</head>
+<body>
+  <!-- Кнопка меню -->
+  <div class="menu-toggle-wrapper" id="menuToggle">
+    <div class="menu-toggle">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+  </div>
+
+  <!-- Боковое меню -->
+  <div class="sidebar" id="sidebar">
+    <div class="user-profile">
+      <h3 id="menu-username">Загрузка...</h3>
+      <p id="menu-level">Lv.1</p>
+    </div>
+    <button class="menu-btn sos" id="sosBtn">🚨 SOS</button>
+    <button class="menu-btn" id="leaderboardBtn">🏆 Таблица лидеров</button>
+    <button class="menu-btn" id="newsBtn">📰 Новости</button>
+  </div>
+
+  <!-- Затемнение -->
+  <div class="overlay" id="overlay"></div>
+
+  <!-- Основной контент -->
+  <div class="header">
+    <h1>Raidroad64</h1>
+    <p>Привет, <span id="user-name"></span>!</p>
+  </div>
+  <div id="map"></div>
+
+  <div id="report-form" style="display:none;">
+    <h3>Добавить метку</h3>
+    <p>Вы уверены, что здесь ДПС?</p>
+    <button id="confirm-btn">✅ Да, добавить</button>
+    <button id="cancel-btn">❌ Отмена</button>
+  </div>
+
+  <script>
+    let map, selectedCoord = null;
+    let placemarks = {};
+
+    // Авторизация
+    fetch('/api/user')
+      .then(res => {
+        if (res.status === 401) {
+          window.location.href = '/login';
+        } else {
+          return res.json();
+        }
+      })
+      .then(data => {
+        if (data) {
+          document.getElementById('user-name').textContent =
+            data.username + (data.trust_level > 1 ? ` (Lv.${data.trust_level})` : '');
+          document.getElementById('menu-username').textContent = data.username;
+          document.getElementById('menu-level').textContent = `Lv.${data.trust_level || 1}`;
+          ymaps.ready(initMap);
+        }
+      });
+
+    function initMap() {
+      map = new ymaps.Map("map", {
+        center: [51.540497, 46.008789],
+        zoom: 11,
+        controls: ['zoomControl']
+      });
+
+      loadReports();
+      setInterval(loadReports, 30000);
+
+      map.events.add('click', function (e) {
+        selectedCoord = e.get('coords');
+        document.getElementById('report-form').style.display = 'block';
+      });
+
+      document.getElementById('confirm-btn').onclick = function() {
+        if (!selectedCoord) return;
+        fetch('/api/report', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ lat: selectedCoord[0], lon: selectedCoord[1] })
+        }).then(() => {
+          document.getElementById('report-form').style.display = 'none';
+          loadReports();
+        });
+      };
+
+      document.getElementById('cancel-btn').onclick = function() {
+        document.getElementById('report-form').style.display = 'none';
+      };
+    }
+
+    function loadReports() {
+      for (let id in placemarks) map.geoObjects.remove(placemarks[id]);
+      placemarks = {};
+
+      fetch('/api/reports')
+        .then(res => res.json())
+        .then(reports => {
+          reports.forEach(r => {
+            const timeDiff = new Date() - new Date(r.timestamp || '2025-01-01');
+            const hoursAgo = timeDiff / (1000 * 60 * 60);
+            let color = '#888';
+            if (hoursAgo <= 0.5) color = '#ff0000';
+            else if (hoursAgo <= 1.5) color = '#ffcc00';
+            else if (hoursAgo <= 2) color = '#00aa00';
+
+            const trustBadge = r.trust_level > 1 ? ` Lv.${r.trust_level}` : '';
+            const content = `
+              <div style="background:white; padding:6px; border-radius:6px; font-size:12px; min-width:120px;">
+                <b>${r.username}${trustBadge}</b><br>
+                <small>${r.time_str}</small><br>
+                <div style="margin-top:6px; display:flex; gap:4px;">
+                  <button onclick="vote(${r.id}, 'like')" style="flex:1; background:#4CAF50; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">👍 ${r.likes}</button>
+                  <button onclick="vote(${r.id}, 'gone')" style="flex:1; background:#ff9800; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">🚗 ${r.gone_count}</button>
+                </div>
+              </div>
+            `;
+
+            const placemark = new ymaps.Placemark([r.lat, r.lon], { balloonContent: content }, {
+              preset: 'islands#circleIcon',
+              iconColor: color
+            });
+
+            fetch('/api/user').then(res => res.json()).then(user => {
+              if (user.username === r.username) {
+                const deleteBtn = `<br><button onclick="deleteReport(${r.id})" style="margin-top:6px; background:#f44336; color:white; border:0; padding:2px 6px; border-radius:3px; font-size:10px; width:100%;">Удалить</button>`;
+                placemark.properties.set('balloonContent', content + deleteBtn);
+              }
+            });
+
+            placemarks[r.id] = placemark;
+            map.geoObjects.add(placemark);
+          });
+        });
+    }
+
+    function vote(reportId, type) {
+      fetch('/api/vote', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ report_id: reportId, type: type })
+      }).then(res => res.json()).then(data => {
+        if (data.status === 'voted') loadReports();
+        else alert('Уже голосовали');
+      });
+    }
+
+    function deleteReport(reportId) {
+      if (confirm('Удалить?')) {
+        fetch(`/api/report/${reportId}`, { method: 'DELETE' })
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'deleted') loadReports();
+            else alert('Ошибка');
+          });
+      }
+    }
+
+    // === Меню ===
+    document.getElementById('menuToggle').addEventListener('click', () => {
+      document.getElementById('sidebar').classList.add('active');
+      document.getElementById('overlay').classList.add('active');
+    });
+
+    document.getElementById('overlay').addEventListener('click', () => {
+      document.getElementById('sidebar').classList.remove('active');
+      document.getElementById('overlay').classList.remove('active');
+    });
+
+    document.querySelectorAll('.menu-btn').forEach(btn => {
+      btn.addEventListener('click', function() {
+        this.style.transform = 'scale(0.97)';
+        setTimeout(() => this.style.transform = '', 150);
+      });
+    });
+  </script>
+</body>
+>>>>>>> 14f06cc (V1.01)
+</html>
