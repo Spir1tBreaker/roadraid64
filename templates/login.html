@@ -2,20 +2,54 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Raidroad64 — Вход</title>
+  <title>Вход — Raidroad64</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { display: flex; justify-content: center; align-items: center; height: 100vh; }
-    .box { text-align: center; padding: 30px; background: #f9f9f9; border-radius: 12px; }
+    body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #1a1a1a;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      color: white;
+    }
+    .login-card {
+      text-align: center;
+      background: #2a2a2a;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      max-width: 400px;
+      width: 90%;
+    }
+    h1 {
+      color: #ff3b30;
+      margin-top: 0;
+      font-size: 24px;
+    }
+    p {
+      color: #aaa;
+      margin: 20px 0 30px;
+      line-height: 1.5;
+    }
   </style>
 </head>
 <body>
-  <div class="box">
-    <h2>Войдите через Telegram</h2>
+  <div class="login-card">
+    <h1>Raidroad64</h1>
+    <p>Присоединяйтесь через Telegram,<br>чтобы отмечать ДПС и помогать друг другу</p>
+
+    <!-- Telegram Login Widget — НИКАКИХ data-onauth! -->
     <script
       async
       src="https://telegram.org/js/telegram-widget.js?22"
       data-telegram-login="raidroad64_bot"
       data-size="large"
+      data-radius="12"
+      data-userpic="true"
       data-request-access="write"
       data-auth-url="https://roadraid64.onrender.com/telegram-login">
     </script>

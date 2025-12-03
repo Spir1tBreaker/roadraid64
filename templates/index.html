@@ -47,15 +47,14 @@
 
   <script>
 
-    fetch('/api/user')
+        // Проверка авторизации
+    fetch('/api/me')
       .then(r => r.json())
       .then(data => {
-        if (!data.user) {
+        if (!data.username) {
           window.location.href = '/login';
         }
       });
-        let map, selectedCoord = null;
-        let placemarks = {};
 
     // Авторизация
     fetch('/api/user')
