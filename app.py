@@ -66,23 +66,29 @@ def index():
 def login():
     return render_template('login.html')
 
+
 @app.route('/login/telegram', methods=['POST'])
 def telegram_login():
-    data = dict(parse_qsl(request.get_data(as_text=True)))
+    # Получаем "тело" запроса как строку
+    body_str = request.get_data(as_text=True)
+    data = dict(parse_qsl(body_str))
+
+    # Проверка подписи
     if not verify_telegram_data(data):
-        return "❌ Неверная подпись. Не пытайтесь подделать данные!", 403
+        return "❌ Подделка данных запрещена", 403
 
-    user_id = int(data['id'])
+    # Извлекаем данные
+    user_id = data['id']
     username = data.get('username', f'user{user_id}')
-    first_name = data.get('first_name', '')
 
-    # Сохраняем пользователя
+    # Сохраняем в БД
     conn = sqlite3.connect('reports.db')
     cur = conn.cursor()
     cur.execute('INSERT OR IGNORE INTO users (username) VALUES (?)', (username,))
     conn.commit()
     conn.close()
 
+    # Авторизуем
     session['username'] = username
     return redirect('/')
 
