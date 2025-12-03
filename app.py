@@ -28,39 +28,27 @@ def init_db():
 
 init_db()
 
-# Проверка подписи Telegram
-def verify(data):
-    hash = data.pop('hash', None)
-    if not hash:
-        return False
-    check = '\n'.join(f'{k}={v}' for k, v in sorted(data.items()))
-    secret = hashlib.sha256(BOT_TOKEN.encode()).digest()
-    hmac_hash = hmac.new(secret, check.encode(), 'sha256').hexdigest()
-    return hmac_hash == hash
 
-# Главная страница
-@app.route('/')
-def index():
-    if 'user' not in session:
-        return redirect('/login')
-    return render_template('index.html', username=session['user'])
+# ... (весь твой код до этого места остаётся без изменений) ...
 
-# Страница входа
-@app.route('/login')
-def login():
-    return render_template('login.html')
-
-# Обработка входа (POST от Telegram)
 @app.route('/telegram-login', methods=['POST'])
 def telegram_login():
     data = dict(parse_qsl(request.get_data(as_text=True)))
-    if not verify(data):
-        return "Invalid auth", 403
+
+    # Проверка подписи
+    hash = data.pop('hash', None)
+    if not hash:
+        return "No hash", 400
+    check_string = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
+    secret = hashlib.sha256(BOT_TOKEN.encode()).digest()
+    hmac_hash = hmac.new(secret, check_string.encode(), 'sha256').hexdigest()
+    if hmac_hash != hash:
+        return "Invalid hash", 403
 
     username = data.get('username', f"user{data['id']}")
     session['user'] = username
 
-    # Сохраняем в базу
+    # Сохраняем в БД
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
     c.execute('INSERT OR IGNORE INTO users (username) VALUES (?)', (username,))
@@ -69,12 +57,8 @@ def telegram_login():
 
     return redirect('/')
 
-# Простой API для теста
-@app.route('/api/user')
-def api_user():
-    return {'user': session.get('user')}
 
-# Запуск
+# --- Главное: правильно запустить сервер ---
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
-    app.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get('PORT', 10000))  # ← Обязательно так!
+    app.run(host='0.0.0.0', port=port)  # ← host='0.0.0.0' — обязательно!
