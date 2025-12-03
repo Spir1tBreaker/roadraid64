@@ -46,8 +46,16 @@
   </div>
 
   <script>
-    let map, selectedCoord = null;
-    let placemarks = {};
+
+    fetch('/api/user')
+      .then(r => r.json())
+      .then(data => {
+        if (!data.user) {
+          window.location.href = '/login';
+        }
+      });
+        let map, selectedCoord = null;
+        let placemarks = {};
 
     // Авторизация
     fetch('/api/user')
