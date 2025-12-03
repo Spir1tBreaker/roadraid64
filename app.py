@@ -1,20 +1,18 @@
 import os
 import sqlite3
 from flask import Flask, request, redirect, session, render_template
-from urllib.parse import parse_qsl
-import hashlib
 import hmac
+import hashlib
 
 app = Flask(__name__)
+# Секретный ключ сессии
 app.secret_key = "raidroad64_secret_2025_xyz123"
 
-# Обязательно: токен из Render Environment
+# Токен бота — из Environment Variables (безопасно!)
 BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 if not BOT_TOKEN:
-    raise RuntimeError("❌ TELEGRAM_BOT_TOKEN не задан в Environment Variables!")
+    raise RuntimeError("TELEGRAM_BOT_TOKEN не задан в Render Environment Variables!")
 
-
-# Инициализация базы (только пользователи)
 def init_db():
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
@@ -27,43 +25,46 @@ def init_db():
     conn.commit()
     conn.close()
 
-
 init_db()
 
+def verify_telegram_data(data):
+    """Проверяет подпись Telegram для GET-параметров"""
+    hash = data.pop('hash', None)
+    if not hash:
+        return False
+    # Сортируем и собираем строку проверки
+    check = '\n'.join(f"{k}={v}" for k, v in sorted(data.items()) if v is not None)
+    secret = hashlib.sha256(BOT_TOKEN.encode()).digest()
+    hmac_hash = hmac.new(secret, check.encode(), 'sha256').hexdigest()
+    return hmac_hash == hash
 
-# Главная страница — только для авторизованных
 @app.route('/')
 def index():
     if 'user' not in session:
         return redirect('/login')
     return render_template('index.html')
 
-
-# Страница входа
 @app.route('/login')
 def login():
     return render_template('login.html')
 
-
-# Telegram Login — ОДИН единственный POST-эндпоинт
-@app.route('/telegram-login', methods=['POST'])
+# 🔥 ВАЖНО: принимаем GET, а не POST!
+@app.route('/telegram-login')
 def telegram_login():
-    # Получаем данные как строку
-    data = dict(parse_qsl(request.get_data(as_text=True)))
+    # Получаем все параметры из URL
+    data = {
+        'id': request.args.get('id'),
+        'first_name': request.args.get('first_name'),
+        'last_name': request.args.get('last_name'),
+        'username': request.args.get('username'),
+        'photo_url': request.args.get('photo_url'),
+        'auth_date': request.args.get('auth_date'),
+        'hash': request.args.get('hash')
+    }
 
-    # Проверка подписи
-    received_hash = data.pop('hash', None)
-    if not received_hash:
-        return "No hash", 400
+    if not verify_telegram_data(data):
+        return "❌ Авторизация не удалась", 403
 
-    check_string = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
-    secret_key = hashlib.sha256(BOT_TOKEN.encode()).digest()
-    computed_hash = hmac.new(secret_key, check_string.encode(), 'sha256').hexdigest()
-
-    if computed_hash != received_hash:
-        return "Invalid auth", 403
-
-    # Получаем username или создаём заглушку
     username = data.get('username', f"user_{data['id']}")
     session['user'] = username
 
@@ -74,17 +75,12 @@ def telegram_login():
     conn.commit()
     conn.close()
 
-    # Перенаправляем на карту
     return redirect('/')
 
-
-# Простой API для проверки сессии (для JS)
 @app.route('/api/me')
 def api_me():
     return {'username': session.get('user')}
 
-
-# === ЗАПУСК НА RENDER ===
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
