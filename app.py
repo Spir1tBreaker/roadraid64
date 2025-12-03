@@ -77,9 +77,30 @@ def telegram_login():
 
     return redirect('/')
 
+
+@app.route('/api/reports')
+def get_reports():
+    # ... твой код ...
+    return jsonify([
+        {
+            "id": r[0],
+            "username": r[1],
+            "lat": r[2],
+            "lon": r[3],
+            "time_str": time_str,
+            "likes": r[6] or 0,
+            "gone_count": r[7] or 0
+            # ❌ НЕ включай "trust_level", если его нет в SQL
+        }
+        for r in rows
+    ])
+
+
 @app.route('/api/me')
 def api_me():
-    return {'username': session.get('user')}
+    if 'user' not in session:
+        return {'error': 'not logged in'}, 401
+    return {'username': session['user']}
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))

@@ -5,6 +5,7 @@
   <title>Raidroad64 — карта ДПС Саратова</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/static/style.css">
+  <!-- Убраны пробелы в конце URL -->
   <script src="https://api-maps.yandex.ru/2.1/?apikey=be618309-d3fc-4f6c-ab23-f2579450d397&lang=ru_RU" type="text/javascript"></script>
 </head>
 <body>
@@ -28,13 +29,11 @@
     <button class="menu-btn" id="newsBtn">📰 Новости</button>
   </div>
 
-  <!-- Затемнение -->
   <div class="overlay" id="overlay"></div>
 
-  <!-- Основной контент -->
   <div class="header">
     <h1>Raidroad64</h1>
-    <p>Привет, <span id="user-name"></span>!</p>
+    <p>Привет, <span id="user-name">...</span>!</p>
   </div>
   <div id="map"></div>
 
@@ -46,33 +45,24 @@
   </div>
 
   <script>
+    let map, selectedCoord = null;
+    let placemarks = {};
+    let currentUsername = '';
 
-        // Проверка авторизации
+    // === ЕДИНСТВЕННАЯ проверка авторизации ===
     fetch('/api/me')
-      .then(r => r.json())
-      .then(data => {
-        if (!data.username) {
-          window.location.href = '/login';
-        }
-      });
-
-    // Авторизация
-    fetch('/api/user')
       .then(res => {
-        if (res.status === 401) {
-          window.location.href = '/login';
-        } else {
-          return res.json();
-        }
+        if (!res.ok) throw new Error('Not authorized');
+        return res.json();
       })
       .then(data => {
-        if (data) {
-          document.getElementById('user-name').textContent =
-            data.username + (data.trust_level > 1 ? ` (Lv.${data.trust_level})` : '');
-          document.getElementById('menu-username').textContent = data.username;
-          document.getElementById('menu-level').textContent = `Lv.${data.trust_level || 1}`;
-          ymaps.ready(initMap);
-        }
+        currentUsername = data.username || 'Аноним';
+        document.getElementById('user-name').textContent = currentUsername;
+        document.getElementById('menu-username').textContent = currentUsername;
+        ymaps.ready(initMap);
+      })
+      .catch(() => {
+        window.location.href = '/login';
       });
 
     function initMap() {
@@ -122,10 +112,10 @@
             else if (hoursAgo <= 1.5) color = '#ffcc00';
             else if (hoursAgo <= 2) color = '#00aa00';
 
-            const trustBadge = r.trust_level > 1 ? ` Lv.${r.trust_level}` : '';
+            // Пока trust_level не возвращается — показываем без уровня
             const content = `
               <div style="background:white; padding:6px; border-radius:6px; font-size:12px; min-width:120px;">
-                <b>${r.username}${trustBadge}</b><br>
+                <b>${r.username}</b><br>
                 <small>${r.time_str}</small><br>
                 <div style="margin-top:6px; display:flex; gap:4px;">
                   <button onclick="vote(${r.id}, 'like')" style="flex:1; background:#4CAF50; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">👍 ${r.likes}</button>
@@ -139,12 +129,11 @@
               iconColor: color
             });
 
-            fetch('/api/user').then(res => res.json()).then(user => {
-              if (user.username === r.username) {
-                const deleteBtn = `<br><button onclick="deleteReport(${r.id})" style="margin-top:6px; background:#f44336; color:white; border:0; padding:2px 6px; border-radius:3px; font-size:10px; width:100%;">Удалить</button>`;
-                placemark.properties.set('balloonContent', content + deleteBtn);
-              }
-            });
+            // Удалять можно, только если метка твоя
+            if (currentUsername === r.username) {
+              const deleteBtn = `<br><button onclick="deleteReport(${r.id})" style="margin-top:6px; background:#f44336; color:white; border:0; padding:2px 6px; border-radius:3px; font-size:10px; width:100%;">Удалить</button>`;
+              placemark.properties.set('balloonContent', content + deleteBtn);
+            }
 
             placemarks[r.id] = placemark;
             map.geoObjects.add(placemark);
@@ -157,7 +146,9 @@
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ report_id: reportId, type: type })
-      }).then(res => res.json()).then(data => {
+      })
+      .then(res => res.json())
+      .then(data => {
         if (data.status === 'voted') loadReports();
         else alert('Уже голосовали');
       });
