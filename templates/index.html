@@ -33,7 +33,35 @@
 
   <div class="header">
     <h1>Raidroad64</h1>
-    <p>Привет, <span id="user-name">...</span>!</p>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <!-- 🔍 Поле поиска улиц -->
+      <div style="position:relative;">
+        <input
+          type="text"
+          id="search-input"
+          placeholder="Поиск улицы..."
+          style="
+            background: rgba(26,26,26,0.8);
+            border: 1px solid #ff3b30;
+            color: white;
+            padding: 6px 28px 6px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            width: 180px;
+            outline: none;
+          "
+        >
+        <span style="
+          position: absolute;
+          right: 10px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: #ff3b30;
+          font-size: 16px;
+        ">🔍</span>
+      </div>
+      <p style="margin:0; color:#aaa;">Привет, <span id="user-name">...</span>!</p>
+    </div>
   </div>
   <div id="map"></div>
 
@@ -247,6 +275,26 @@
           maximumAge: 60000
         }
       );
+    });
+        // === 🔍 Поиск по улицам ===
+    document.getElementById('search-input').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        const query = this.value.trim();
+        if (!query) return;
+
+        // Используем Yandex.Geocoder
+        ymaps.geocode(query + ', Саратов', {
+          results: 1
+        }).then(function(res) {
+          if (res.geoObjects.getLength()) {
+            const coords = res.geoObjects.get(0).geometry.getCoordinates();
+            map.setCenter(coords, 15, { duration: 500 });
+            this.value = '';
+          } else {
+            alert('Улица не найдена в Саратове');
+          }
+        }.bind(this));
+      }
     });
   </script>
 </body>
