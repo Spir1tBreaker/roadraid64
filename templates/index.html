@@ -5,6 +5,7 @@
   <title>Raidroad64 — карта ДПС Саратова</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/static/style.css">
+  <!-- Убраны пробелы в конце URL -->
   <script src="https://api-maps.yandex.ru/2.1/?apikey=be618309-d3fc-4f6c-ab23-f2579450d397&lang=ru_RU" type="text/javascript"></script>
 </head>
 <body>
@@ -30,11 +31,10 @@
 
   <div class="overlay" id="overlay"></div>
 
-  <!-- Шапка с поиском -->
   <div class="header">
     <h1>Raidroad64</h1>
     <div style="display:flex; align-items:center; gap:12px;">
-      <!-- 🔍 Поле поиска с автодополнением -->
+      <!-- 🔍 Поле поиска улиц -->
       <div style="position:relative;">
         <input
           type="text"
@@ -59,26 +59,10 @@
           color: #ff3b30;
           font-size: 16px;
         ">🔍</span>
-        <!-- Контейнер для подсказок -->
-        <div id="suggestions" style="
-          position: absolute;
-          top: 100%;
-          left: 0;
-          width: 100%;
-          background: #1a1a1a;
-          border: 1px solid #ff3b30;
-          border-radius: 8px;
-          max-height: 200px;
-          overflow-y: auto;
-          z-index: 1000;
-          display: none;
-          margin-top: 4px;
-        "></div>
       </div>
       <p style="margin:0; color:#aaa;">Привет, <span id="user-name">...</span>!</p>
     </div>
   </div>
-
   <div id="map"></div>
 
   <div id="report-form" style="display:none;">
@@ -177,6 +161,7 @@
             else if (hoursAgo <= 1.5) color = '#ffcc00';
             else if (hoursAgo <= 2) color = '#00aa00';
 
+            // ✅ Безопасная генерация — без onclick
             const content = `
               <div style="background:white; padding:6px; border-radius:6px; font-size:12px; min-width:120px;">
                 <b>${r.username}</b><br>
@@ -210,63 +195,7 @@
         });
     }
 
-    // === 🔍 Автодополнение поиска ===
-    const searchInput = document.getElementById('search-input');
-    const suggestionsBox = document.getElementById('suggestions');
-    let debounceTimer;
-
-    searchInput.addEventListener('input', function() {
-      const query = this.value.trim();
-      clearTimeout(debounceTimer);
-
-      if (!query) {
-        suggestionsBox.style.display = 'none';
-        return;
-      }
-
-      debounceTimer = setTimeout(() => {
-        fetch(`https://suggest-maps.yandex.ru/v1/suggest?text=${encodeURIComponent(query + ', Саратов')}&lang=ru_RU&results=5`)
-          .then(res => res.json())
-          .then(data => {
-            if (data.results && data.results.length) {
-              suggestionsBox.innerHTML = '';
-              data.results.forEach(item => {
-                const div = document.createElement('div');
-                div.textContent = item.title;
-                div.style.padding = '8px 12px';
-                div.style.cursor = 'pointer';
-                div.style.borderBottom = '1px solid #333';
-                div.style.color = '#fff';
-                div.onmouseenter = () => div.style.background = '#2a2a2a';
-                div.onmouseleave = () => div.style.background = '';
-                div.onclick = () => {
-                  searchInput.value = item.title;
-                  suggestionsBox.style.display = 'none';
-                  ymaps.geocode(item.title, { results: 1 }).then(res => {
-                    if (res.geoObjects.getLength()) {
-                      const coords = res.geoObjects.get(0).geometry.getCoordinates();
-                      map.setCenter(coords, 15, { duration: 500 });
-                    }
-                  });
-                };
-                suggestionsBox.appendChild(div);
-              });
-              suggestionsBox.style.display = 'block';
-            } else {
-              suggestionsBox.style.display = 'none';
-            }
-          });
-      }, 300);
-    });
-
-    // Скрыть подсказки при клике вне поля
-    document.addEventListener('click', (e) => {
-      if (!searchInput.contains(e.target) && !suggestionsBox.contains(e.target)) {
-        suggestionsBox.style.display = 'none';
-      }
-    });
-
-    // === Голосование ===
+    // ✅ Универсальный обработчик голосования (без ошибок синтаксиса)
     document.addEventListener('click', function(e) {
       if (e.target.classList.contains('vote-btn')) {
         const reportId = e.target.getAttribute('data-report-id');
@@ -346,6 +275,26 @@
           maximumAge: 60000
         }
       );
+    });
+        // === 🔍 Поиск по улицам ===
+    document.getElementById('search-input').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        const query = this.value.trim();
+        if (!query) return;
+
+        // Используем Yandex.Geocoder
+        ymaps.geocode(query + ', Саратов', {
+          results: 1
+        }).then(function(res) {
+          if (res.geoObjects.getLength()) {
+            const coords = res.geoObjects.get(0).geometry.getCoordinates();
+            map.setCenter(coords, 15, { duration: 500 });
+            this.value = '';
+          } else {
+            alert('Улица не найдена в Саратове');
+          }
+        }.bind(this));
+      }
     });
   </script>
 </body>
