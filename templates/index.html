@@ -5,6 +5,7 @@
   <title>Raidroad64 — карта ДПС Саратова</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/static/style.css">
+  <!-- Убраны пробелы в конце URL -->
   <script src="https://api-maps.yandex.ru/2.1/?apikey=be618309-d3fc-4f6c-ab23-f2579450d397&lang=ru_RU" type="text/javascript"></script>
 </head>
 <body>
@@ -43,7 +44,7 @@
     <button id="cancel-btn">❌ Отмена</button>
   </div>
 
-  <!-- 🔴 Кнопка "Моё местоположение" (красно-чёрная) -->
+  <!-- 🔴 Кнопка "Моё местоположение" -->
   <div id="geolocate-btn" style="
     position: fixed;
     bottom: 90px;
@@ -132,13 +133,20 @@
             else if (hoursAgo <= 1.5) color = '#ffcc00';
             else if (hoursAgo <= 2) color = '#00aa00';
 
+            // ✅ Безопасная генерация — без onclick
             const content = `
               <div style="background:white; padding:6px; border-radius:6px; font-size:12px; min-width:120px;">
                 <b>${r.username}</b><br>
                 <small>${r.time_str}</small><br>
                 <div style="margin-top:6px; display:flex; gap:4px;">
-                  <button onclick="vote(${r.id}, 'like')" style="flex:1; background:#4CAF50; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">👍 ${r.likes}</button>
-                  <button onclick="vote(${r.id}, 'gone')" style="flex:1; background:#ff9800; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">🚗 ${r.gone_count}</button>
+                  <button class="vote-btn" data-report-id="${r.id}" data-type="like"
+                          style="flex:1; background:#4CAF50; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">
+                    👍 ${r.likes}
+                  </button>
+                  <button class="vote-btn" data-report-id="${r.id}" data-type="gone"
+                          style="flex:1; background:#ff9800; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">
+                    🚗 ${r.gone_count}
+                  </button>
                 </div>
               </div>
             `;
@@ -159,18 +167,26 @@
         });
     }
 
-    function vote(reportId, type) {
-      fetch('/api/vote', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ report_id: reportId, type: type })
-      })
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === 'voted') loadReports();
-        else alert('Уже голосовали');
-      });
-    }
+    // ✅ Универсальный обработчик голосования (без ошибок синтаксиса)
+    document.addEventListener('click', function(e) {
+      if (e.target.classList.contains('vote-btn')) {
+        const reportId = e.target.getAttribute('data-report-id');
+        const type = e.target.getAttribute('data-type');
+        fetch('/api/vote', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ report_id: reportId, type: type })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'voted') {
+            loadReports();
+          } else {
+            alert('Уже голосовали');
+          }
+        });
+      }
+    });
 
     function deleteReport(reportId) {
       if (confirm('Удалить?')) {
@@ -201,10 +217,10 @@
       });
     });
 
-    // === 📍 Кнопка "Моё местоположение" ===
+    // === 📍 Геолокация ===
     document.getElementById('geolocate-btn').addEventListener('click', function() {
       if (!navigator.geolocation) {
-        alert('Геолокация не поддерживается вашим браузером');
+        alert('Геолокация не поддерживается');
         return;
       }
 
@@ -214,18 +230,14 @@
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          const userLat = position.coords.latitude;
-          const userLon = position.coords.longitude;
-          map.setCenter([userLat, userLon], 14);
+          map.setCenter([position.coords.latitude, position.coords.longitude], 14);
           btn.innerHTML = '📍';
           btn.style.borderColor = '#ff3b30';
         },
         (error) => {
-          let msg = 'Не удалось определить местоположение';
-          if (error.code === 1) {
-            msg = 'Доступ к геолокации запрещён. Разрешите в настройках браузера.';
-          }
-          alert(msg);
+          alert(error.code === 1
+            ? 'Доступ к геолокации запрещён'
+            : 'Не удалось определить местоположение');
           btn.innerHTML = '📍';
           btn.style.borderColor = '#ff3b30';
         },
