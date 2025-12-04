@@ -5,7 +5,6 @@
   <title>Raidroad64 — карта ДПС Саратова</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/static/style.css">
-  <!-- Убраны пробелы в конце URL -->
   <script src="https://api-maps.yandex.ru/2.1/?apikey=be618309-d3fc-4f6c-ab23-f2579450d397&lang=ru_RU" type="text/javascript"></script>
 </head>
 <body>
@@ -44,12 +43,33 @@
     <button id="cancel-btn">❌ Отмена</button>
   </div>
 
+  <!-- 🔴 Кнопка "Моё местоположение" (красно-чёрная) -->
+  <div id="geolocate-btn" style="
+    position: fixed;
+    bottom: 90px;
+    right: 20px;
+    background: #1a1a1a;
+    color: white;
+    border: 2px solid #ff3b30;
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    font-size: 20px;
+  ">
+    📍
+  </div>
+
   <script>
     let map, selectedCoord = null;
     let placemarks = {};
     let currentUsername = '';
 
-    // === ЕДИНСТВЕННАЯ проверка авторизации ===
     fetch('/api/me')
       .then(res => {
         if (!res.ok) throw new Error('Not authorized');
@@ -94,7 +114,7 @@
 
       document.getElementById('cancel-btn').onclick = function() {
         document.getElementById('report-form').style.display = 'none';
-      };
+      });
     }
 
     function loadReports() {
@@ -112,7 +132,6 @@
             else if (hoursAgo <= 1.5) color = '#ffcc00';
             else if (hoursAgo <= 2) color = '#00aa00';
 
-            // Пока trust_level не возвращается — показываем без уровня
             const content = `
               <div style="background:white; padding:6px; border-radius:6px; font-size:12px; min-width:120px;">
                 <b>${r.username}</b><br>
@@ -129,7 +148,6 @@
               iconColor: color
             });
 
-            // Удалять можно, только если метка твоя
             if (currentUsername === r.username) {
               const deleteBtn = `<br><button onclick="deleteReport(${r.id})" style="margin-top:6px; background:#f44336; color:white; border:0; padding:2px 6px; border-radius:3px; font-size:10px; width:100%;">Удалить</button>`;
               placemark.properties.set('balloonContent', content + deleteBtn);
@@ -181,6 +199,42 @@
         this.style.transform = 'scale(0.97)';
         setTimeout(() => this.style.transform = '', 150);
       });
+    });
+
+    // === 📍 Кнопка "Моё местоположение" ===
+    document.getElementById('geolocate-btn').addEventListener('click', function() {
+      if (!navigator.geolocation) {
+        alert('Геолокация не поддерживается вашим браузером');
+        return;
+      }
+
+      const btn = this;
+      btn.innerHTML = '⏳';
+      btn.style.borderColor = '#ff9999';
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const userLat = position.coords.latitude;
+          const userLon = position.coords.longitude;
+          map.setCenter([userLat, userLon], 14);
+          btn.innerHTML = '📍';
+          btn.style.borderColor = '#ff3b30';
+        },
+        (error) => {
+          let msg = 'Не удалось определить местоположение';
+          if (error.code === 1) {
+            msg = 'Доступ к геолокации запрещён. Разрешите в настройках браузера.';
+          }
+          alert(msg);
+          btn.innerHTML = '📍';
+          btn.style.borderColor = '#ff3b30';
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 60000
+        }
+      );
     });
   </script>
 </body>
