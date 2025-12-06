@@ -38,20 +38,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-    # Таблица голосов (создаётся при первом голосе, но создадим сразу)
-    conn = sqlite3.connect('votes.db')
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS votes (
-            report_id INTEGER,
-            voter_username TEXT,
-            vote_type TEXT CHECK(vote_type IN ('like', 'gone')),
-            PRIMARY KEY (report_id, voter_username)
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
 init_db()
 
 def verify_telegram_data(data):
@@ -110,26 +96,10 @@ def get_reports():
     try:
         conn = sqlite3.connect('reports.db')
         cur = conn.cursor()
-        # ✅ Правильный фильтр по UTC (SQLite хранит как UTC)
         cur.execute("""
-            SELECT 
-                r.id, r.username, r.lat, r.lon, r.timestamp,
-                COALESCE(l.count, 0) as likes,
-                COALESCE(g.count, 0) as gone_count
-            FROM reports r
-            LEFT JOIN (
-                SELECT report_id, COUNT(*) as count 
-                FROM votes 
-                WHERE vote_type = 'like' 
-                GROUP BY report_id
-            ) l ON r.id = l.report_id
-            LEFT JOIN (
-                SELECT report_id, COUNT(*) as count 
-                FROM votes 
-                WHERE vote_type = 'gone' 
-                GROUP BY report_id
-            ) g ON r.id = g.report_id
-            WHERE r.timestamp > datetime('now', '-3 hours')
+            SELECT id, username, lat, lon, timestamp
+            FROM reports
+            WHERE timestamp > datetime('now', 'utc', '-3 hours')
         """)
         rows = cur.fetchall()
         conn.close()
@@ -154,8 +124,8 @@ def get_reports():
                 "lon": r[3],
                 "time_str": time_str,
                 "timestamp": r[4],
-                "likes": r[5],
-                "gone_count": r[6]
+                "likes": 0,
+                "gone_count": 0
             })
         return jsonify(reports)
     except Exception as e:
@@ -215,12 +185,16 @@ def vote():
 
     conn = sqlite3.connect('votes.db')
     cur = conn.cursor()
-    cur.execute("SELECT 1 FROM votes WHERE report_id = ? AND voter_username = ?", (report_id, voter))
-    if cur.fetchone():
-        conn.close()
-        return jsonify({"error": "already voted"}), 400
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS votes (
+            report_id INTEGER,
+            voter_username TEXT,
+            vote_type TEXT,
+            PRIMARY KEY (report_id, voter_username)
+        )
+    ''')
+    conn.commit()
 
-    # Проверка: не за себя ли голосует
     conn_reports = sqlite3.connect('reports.db')
     cur_reports = conn_reports.cursor()
     cur_reports.execute("SELECT username FROM reports WHERE id = ?", (report_id,))
@@ -233,13 +207,17 @@ def vote():
         return jsonify({"error": "cannot vote for yourself"}), 400
     conn_reports.close()
 
-    # Добавляем голос
+    cur.execute("SELECT 1 FROM votes WHERE report_id = ? AND voter_username = ?", (report_id, voter))
+    if cur.fetchone():
+        conn.close()
+        return jsonify({"error": "already voted"}), 400
+
     cur.execute("INSERT INTO votes (report_id, voter_username, vote_type) VALUES (?, ?, ?)",
                 (report_id, voter, vote_type))
     conn.commit()
     conn.close()
 
-    # "Уехали" — старим метку на 10 минут
+    # 🔥 "Уехали" — старим метку на 10 минут (только если она существует)
     if vote_type == 'gone':
         conn2 = sqlite3.connect('reports.db')
         cur2 = conn2.cursor()
