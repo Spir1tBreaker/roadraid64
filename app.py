@@ -8,14 +8,11 @@ import hashlib
 app = Flask(__name__)
 app.secret_key = "raidroad64_secret_2025_xyz123"
 
-# Токен бота из Render Environment Variables
 BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 if not BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN не задан в Render Environment Variables!")
 
-
 def init_db():
-    # База пользователей
     conn = sqlite3.connect('users.db')
     c = conn.cursor()
     c.execute('''
@@ -27,7 +24,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-    # База меток
     conn = sqlite3.connect('reports.db')
     c = conn.cursor()
     c.execute('''
@@ -42,9 +38,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-
 init_db()
-
 
 def verify_telegram_data(data):
     hash = data.pop('hash', None)
@@ -55,18 +49,15 @@ def verify_telegram_data(data):
     hmac_hash = hmac.new(secret, check.encode(), 'sha256').hexdigest()
     return hmac_hash == hash
 
-
 @app.route('/')
 def index():
     if 'user' not in session:
         return redirect('/login')
     return render_template('index.html')
 
-
 @app.route('/login')
 def login():
     return render_template('login.html')
-
 
 @app.route('/telegram-login')
 def telegram_login():
@@ -94,13 +85,11 @@ def telegram_login():
 
     return redirect('/')
 
-
 @app.route('/api/me')
 def api_me():
     if 'user' not in session:
         return {'error': 'not logged in'}, 401
     return {'username': session['user']}
-
 
 @app.route('/api/reports')
 def get_reports():
@@ -110,7 +99,7 @@ def get_reports():
         cur.execute("""
             SELECT id, username, lat, lon, timestamp
             FROM reports
-            WHERE timestamp > datetime('now', 'utc', '-2 hours')
+            WHERE timestamp > datetime('now', 'utc', '-3 hours')
         """)
         rows = cur.fetchall()
         conn.close()
@@ -134,6 +123,7 @@ def get_reports():
                 "lat": r[2],
                 "lon": r[3],
                 "time_str": time_str,
+                "timestamp": r[4],  # ← для JS
                 "likes": 0,
                 "gone_count": 0
             })
@@ -141,7 +131,6 @@ def get_reports():
     except Exception as e:
         print("Ошибка в /api/reports:", e)
         return jsonify([])
-
 
 @app.route('/api/report', methods=['POST'])
 def add_report():
@@ -162,7 +151,6 @@ def add_report():
     conn.close()
     return jsonify({"status": "ok"})
 
-
 @app.route('/api/report/<int:report_id>', methods=['DELETE'])
 def delete_report(report_id):
     if 'user' not in session:
@@ -182,7 +170,6 @@ def delete_report(report_id):
     conn.close()
     return jsonify({"status": "deleted"})
 
-
 @app.route('/api/vote', methods=['POST'])
 def vote():
     if 'user' not in session:
@@ -196,7 +183,7 @@ def vote():
     if not report_id or vote_type not in ('like', 'gone'):
         return jsonify({"error": "invalid data"}), 400
 
-    # Подключаем БД
+    # Подключаем БД голосов
     conn = sqlite3.connect('votes.db')
     cur = conn.cursor()
     cur.execute('''
@@ -209,7 +196,7 @@ def vote():
     ''')
     conn.commit()
 
-    # Проверка: не голосует ли за себя
+    # Проверка: не за себя ли голосует
     conn_reports = sqlite3.connect('reports.db')
     cur_reports = conn_reports.cursor()
     cur_reports.execute("SELECT username FROM reports WHERE id = ?", (report_id,))
@@ -222,7 +209,7 @@ def vote():
         return jsonify({"error": "cannot vote for yourself"}), 400
     conn_reports.close()
 
-    # Проверка: уже голосовал?
+    # Уже голосовал?
     cur.execute("SELECT 1 FROM votes WHERE report_id = ? AND voter_username = ?", (report_id, voter))
     if cur.fetchone():
         conn.close()
@@ -234,11 +221,10 @@ def vote():
     conn.commit()
     conn.close()
 
-    # 🔥 Если "уехали" — уменьшаем время метки на 10 минут
+    # 🔥 "Уехали" — старим метку на 10 минут
     if vote_type == 'gone':
         conn2 = sqlite3.connect('reports.db')
         cur2 = conn2.cursor()
-        # Уменьшаем timestamp на 10 минут (600 секунд)
         cur2.execute("""
             UPDATE reports 
             SET timestamp = datetime(timestamp, '-600 seconds')
@@ -248,7 +234,6 @@ def vote():
         conn2.close()
 
     return jsonify({"status": "voted"})
-
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
