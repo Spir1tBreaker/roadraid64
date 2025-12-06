@@ -5,7 +5,6 @@
   <title>Raidroad64 — карта ДПС Саратова</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/static/style.css">
-  <!-- ИСПРАВЛЕНО: убраны пробелы в конце URL -->
   <script src="https://api-maps.yandex.ru/2.1/?apikey=be618309-d3fc-4f6c-ab23-f2579450d397&lang=ru_RU" type="text/javascript"></script>
 </head>
 <body>
@@ -145,15 +144,14 @@
         .then(res => res.json())
         .then(reports => {
           reports.forEach(r => {
-            // 🔥 Правильный расчёт времени в UTC
             const reportTime = new Date(r.timestamp + 'Z');
             const now = new Date();
             const hoursAgo = (now - reportTime) / (1000 * 60 * 60);
 
             let color = null;
-            if (hoursAgo <= 1) color = '#ff0000';      // 🔴
-            else if (hoursAgo <= 2) color = '#ffcc00';  // 🟡
-            else if (hoursAgo <= 2.5) color = '#00aa00'; // 🟢
+            if (hoursAgo <= 1) color = '#ff0000';
+            else if (hoursAgo <= 2) color = '#ffcc00';
+            else if (hoursAgo <= 2.5) color = '#00aa00';
             if (!color) return;
 
             const content = `
@@ -189,17 +187,26 @@
         });
     }
 
-    // Голосование
+    // ✅ РАБОЧИЙ ОБРАБОТЧИК ГОЛОСОВАНИЯ
     document.addEventListener('click', e => {
       if (e.target.classList.contains('vote-btn')) {
-        const { reportId, type } = e.target.dataset;
+        const reportId = parseInt(e.target.dataset.reportId);
+        const type = e.target.dataset.type;
+
+        if (!reportId || !['like', 'gone'].includes(type)) return;
+
         fetch('/api/vote', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({ report_id: reportId, type })
-        }).then(res => res.json()).then(data => {
-          if (data.status === 'voted') loadReports();
-          else alert('Уже голосовали');
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ report_id: reportId, type: type })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'voted') {
+            loadReports();
+          } else {
+            alert('Уже голосовали');
+          }
         });
       }
     });
@@ -225,7 +232,7 @@
       document.getElementById('overlay').classList.remove('active');
     };
 
-    // 🔗 Telegram-каналы (без пробелов!)
+    // 🔗 Каналы (без пробелов!)
     document.getElementById('sosBtn').onclick = () => window.open('https://t.me/+WFDKSUr0XSgyMGI6', '_blank');
     document.getElementById('leaderboardBtn').onclick = () => window.open('https://t.me/+EAd7iBOKoBlkMGFi', '_blank');
     document.getElementById('newsBtn').onclick = () => window.open('https://t.me/raidroad64_news', '_blank');
@@ -248,7 +255,7 @@
       );
     };
 
-    // Поиск по улицам
+    // Поиск
     document.getElementById('search-input').onkeypress = e => {
       if (e.key === 'Enter') {
         const q = e.target.value.trim();
