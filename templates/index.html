@@ -5,6 +5,7 @@
   <title>Raidroad64 — карта ДПС Саратова</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/static/style.css">
+  <!-- Исправленный URL без пробелов -->
   <script src="https://api-maps.yandex.ru/2.1/?apikey=be618309-d3fc-4f6c-ab23-f2579450d397&lang=ru_RU" type="text/javascript"></script>
 </head>
 <body>
@@ -93,6 +94,7 @@
     let map, selectedCoord = null;
     let placemarks = {};
     let currentUsername = '';
+    let currentPopup = null;
 
     fetch('/api/me')
       .then(res => res.ok ? res.json() : Promise.reject())
@@ -154,32 +156,14 @@
             else if (hoursAgo <= 2.5) color = '#00aa00';
             if (!color) return;
 
-            const content = `
-              <div style="background:white; padding:6px; border-radius:6px; font-size:12px; min-width:120px;">
-                <b>${r.username}</b><br>
-                <small>${r.time_str}</small><br>
-                <div style="margin-top:6px; display:flex; gap:4px;">
-                  <button class="vote-btn" data-report-id="${r.id}" data-type="like"
-                          style="flex:1; background:#4CAF50; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">
-                    👍 ${r.likes}
-                  </button>
-                  <button class="vote-btn" data-report-id="${r.id}" data-type="gone"
-                          style="flex:1; background:#ff9800; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">
-                    🚗 ${r.gone_count}
-                  </button>
-                </div>
-              </div>
-            `;
-
-            const placemark = new ymaps.Placemark([r.lat, r.lon], { balloonContent: content }, {
+            const placemark = new ymaps.Placemark([r.lat, r.lon], {}, {
               preset: 'islands#circleIcon',
               iconColor: color
             });
 
-            if (currentUsername === r.username) {
-              const deleteBtn = `<br><button onclick="deleteReport(${r.id})" style="margin-top:6px; background:#f44336; color:white; border:0; padding:2px 6px; border-radius:3px; font-size:10px; width:100%;">Удалить</button>`;
-              placemark.properties.set('balloonContent', content + deleteBtn);
-            }
+            placemark.events.add('click', () => {
+              showCustomPopup(r, currentUsername === r.username);
+            });
 
             placemarks[r.id] = placemark;
             map.geoObjects.add(placemark);
@@ -187,42 +171,92 @@
         });
     }
 
+    function showCustomPopup(report, isOwn) {
+      if (currentPopup) {
+        document.body.removeChild(currentPopup);
+        currentPopup = null;
+      }
 
-    document.addEventListener('click', e => {
-      if (e.target.classList.contains('vote-btn')) {
-        const reportId = parseInt(e.target.dataset.reportId);
-        const type = e.target.dataset.type;
+      const popup = document.createElement('div');
+      popup.style.cssText = `
+        position: absolute;
+        background: #1a1a1a;
+        color: white;
+        border: 2px solid #ff3b30;
+        border-radius: 12px;
+        padding: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+        z-index: 1001;
+        font-size: 14px;
+        min-width: 180px;
+        max-width: 220px;
+      `;
+      popup.innerHTML = `
+        <div style="margin-bottom:8px;">
+          <b>${report.username}</b><br>
+          <small style="color:#aaa;">${report.time_str}</small>
+        </div>
+        <button id="popup-gone-btn" style="
+          width:100%; padding:6px; background:#ff3b30; color:white;
+          border:none; border-radius:6px; font-weight:bold; cursor:pointer;
+        ">🚗 Уехали</button>
+      `;
 
-        if (!reportId || !['like', 'gone'].includes(type)) return;
+      if (isOwn) {
+        popup.innerHTML += `
+          <button id="popup-delete-btn" style="
+            width:100%; margin-top:6px; padding:6px; background:#f44336; color:white;
+            border:none; border-radius:6px; cursor:pointer;
+          ">🗑️ Удалить</button>
+        `;
+      }
 
+      document.body.appendChild(popup);
+      currentPopup = popup;
+
+      // Позиционируем попап
+      const pixelCoords = map.converter.globalToPage([report.lat, report.lon]);
+      popup.style.left = (pixelCoords[0] - 110) + 'px';
+      popup.style.top = (pixelCoords[1] - 120) + 'px';
+
+      // Закрытие по клику вне
+      const closeHandler = (e) => {
+        if (!popup.contains(e.target)) {
+          document.body.removeChild(popup);
+          currentPopup = null;
+          document.removeEventListener('click', closeHandler);
+        }
+      };
+      document.addEventListener('click', closeHandler);
+
+      // Обработчики
+      document.getElementById('popup-gone-btn').onclick = () => {
         fetch('/api/vote', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ report_id: reportId, type: type })
-        })
-        .then(res => res.json())
-        .then(data => {
-          if (data.status === 'voted') {
-            loadReports();
-          } else {
-            alert('Уже голосовали');
-          }
+          body: JSON.stringify({ report_id: report.id, type: 'gone' })
+        }).then(() => {
+          if (currentPopup) document.body.removeChild(currentPopup);
+          currentPopup = null;
+          loadReports();
         });
-      }
-    });
+      };
 
-    function deleteReport(id) {
-      if (confirm('Удалить?')) {
-        fetch(`/api/report/${id}`, { method: 'DELETE' })
-          .then(res => res.json())
-          .then(data => {
-            if (data.status === 'deleted') loadReports();
-            else alert('Ошибка');
-          });
+      if (isOwn) {
+        document.getElementById('popup-delete-btn').onclick = () => {
+          if (confirm('Удалить метку?')) {
+            fetch(`/api/report/${report.id}`, { method: 'DELETE' })
+              .then(() => {
+                if (currentPopup) document.body.removeChild(currentPopup);
+                currentPopup = null;
+                loadReports();
+              });
+          }
+        };
       }
     }
 
-    // Меню
+    // === Меню ===
     document.getElementById('menuToggle').onclick = () => {
       document.getElementById('sidebar').classList.add('active');
       document.getElementById('overlay').classList.add('active');
@@ -232,12 +266,12 @@
       document.getElementById('overlay').classList.remove('active');
     };
 
-    // 🔗 Каналы (без пробелов!)
+    // === Telegram-каналы ===
     document.getElementById('sosBtn').onclick = () => window.open('https://t.me/+WFDKSUr0XSgyMGI6', '_blank');
     document.getElementById('leaderboardBtn').onclick = () => window.open('https://t.me/+EAd7iBOKoBlkMGFi', '_blank');
     document.getElementById('newsBtn').onclick = () => window.open('https://t.me/raidroad64_news', '_blank');
 
-    // Геолокация
+    // === Геолокация ===
     document.getElementById('geolocate-btn').onclick = function() {
       if (!navigator.geolocation) return alert('Геолокация не поддерживается');
       const btn = this;
@@ -255,7 +289,7 @@
       );
     };
 
-    // Поиск
+    // === Поиск по улицам ===
     document.getElementById('search-input').onkeypress = e => {
       if (e.key === 'Enter') {
         const q = e.target.value.trim();
