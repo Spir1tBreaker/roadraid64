@@ -5,7 +5,6 @@
   <title>Raidroad64 — карта ДПС Саратова</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/static/style.css">
-  <!-- ИСПРАВЛЕНО: убраны пробелы в конце URL -->
   <script src="https://api-maps.yandex.ru/2.1/?apikey=be618309-d3fc-4f6c-ab23-f2579450d397&lang=ru_RU" type="text/javascript"></script>
 </head>
 <body>
@@ -94,7 +93,6 @@
     let map, selectedCoord = null;
     let placemarks = {};
     let currentUsername = '';
-    let activePopup = null;
 
     fetch('/api/me')
       .then(res => res.ok ? res.json() : Promise.reject())
@@ -156,14 +154,32 @@
             else if (hoursAgo <= 2.5) color = '#00aa00';
             if (!color) return;
 
-            const placemark = new ymaps.Placemark([r.lat, r.lon], {}, {
+            const content = `
+              <div style="background:white; padding:6px; border-radius:6px; font-size:12px; min-width:120px;">
+                <b>${r.username}</b><br>
+                <small>${r.time_str}</small><br>
+                <div style="margin-top:6px; display:flex; gap:4px;">
+                  <button class="vote-btn" data-report-id="${r.id}" data-type="like"
+                          style="flex:1; background:#4CAF50; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">
+                    👍 ${r.likes}
+                  </button>
+                  <button class="vote-btn" data-report-id="${r.id}" data-type="gone"
+                          style="flex:1; background:#ff9800; color:white; border:0; padding:2px; border-radius:3px; font-size:10px;">
+                    🚗 ${r.gone_count}
+                  </button>
+                </div>
+              </div>
+            `;
+
+            const placemark = new ymaps.Placemark([r.lat, r.lon], { balloonContent: content }, {
               preset: 'islands#circleIcon',
               iconColor: color
             });
 
-            placemark.events.add('click', () => {
-              showStylishPopup(r, currentUsername === r.username);
-            });
+            if (currentUsername === r.username) {
+              const deleteBtn = `<br><button onclick="deleteReport(${r.id})" style="margin-top:6px; background:#f44336; color:white; border:0; padding:2px 6px; border-radius:3px; font-size:10px; width:100%;">Удалить</button>`;
+              placemark.properties.set('balloonContent', content + deleteBtn);
+            }
 
             placemarks[r.id] = placemark;
             map.geoObjects.add(placemark);
@@ -171,104 +187,42 @@
         });
     }
 
-    function showStylishPopup(report, isOwn) {
-      if (activePopup) {
-        activePopup.remove();
-        activePopup = null;
-      }
 
-      const popupContent = `
-        <div style="
-          background: #1a1a1a;
-          color: white;
-          border: 2px solid #ff3b30;
-          border-radius: 12px;
-          padding: 14px;
-          box-shadow: 0 6px 20px rgba(255, 59, 48, 0.4);
-          font-size: 14px;
-          max-width: 200px;
-          animation: popupFadeIn 0.2s ease;
-        ">
-          <div style="margin-bottom: 10px;">
-            <b>${report.username}</b><br>
-            <small style="color: #aaa;">${report.time_str}</small>
-          </div>
-          <button id="popup-gone" style="
-            width: 100%;
-            padding: 8px;
-            background: #ff3b30;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: transform 0.1s, background 0.2s;
-          ">🚗 Уехали</button>
-          ${isOwn ? `
-            <button id="popup-delete" style="
-              width: 100%;
-              margin-top: 8px;
-              padding: 8px;
-              background: #f44336;
-              color: white;
-              border: none;
-              border-radius: 6px;
-              cursor: pointer;
-              transition: transform 0.1s, background 0.2s;
-            ">🗑️ Удалить</button>
-          ` : ''}
-        </div>
-      `;
+    document.addEventListener('click', e => {
+      if (e.target.classList.contains('vote-btn')) {
+        const reportId = parseInt(e.target.dataset.reportId);
+        const type = e.target.dataset.type;
 
-      const hint = new ymaps.HtmlHint(popupContent);
-      map.hint.open([report.lat, report.lon], hint);
-      activePopup = hint;
+        if (!reportId || !['like', 'gone'].includes(type)) return;
 
-      // Анимация
-      if (!document.getElementById('popup-styles')) {
-        const style = document.createElement('style');
-        style.id = 'popup-styles';
-        style.innerHTML = `
-          @keyframes popupFadeIn {
-            from { opacity: 0; transform: translateY(5px); }
-            to { opacity: 1; transform: translateY(0); }
+        fetch('/api/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ report_id: reportId, type: type })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === 'voted') {
+            loadReports();
+          } else {
+            alert('Уже голосовали');
           }
-        `;
-        document.head.appendChild(style);
+        });
       }
+    });
 
-      // Обработчики кнопок
-      setTimeout(() => {
-        const goneBtn = document.getElementById('popup-gone');
-        if (goneBtn) {
-          goneBtn.onclick = () => {
-            fetch('/api/vote', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ report_id: report.id, type: 'gone' })
-            }).then(() => {
-              map.hint.close();
-              loadReports();
-            });
-          };
-        }
-
-        const deleteBtn = document.getElementById('popup-delete');
-        if (deleteBtn) {
-          deleteBtn.onclick = () => {
-            if (confirm('Удалить метку?')) {
-              fetch(`/api/report/${report.id}`, { method: 'DELETE' })
-                .then(() => {
-                  map.hint.close();
-                  loadReports();
-                });
-            }
-          };
-        }
-      }, 100);
+    function deleteReport(id) {
+      if (confirm('Удалить?')) {
+        fetch(`/api/report/${id}`, { method: 'DELETE' })
+          .then(res => res.json())
+          .then(data => {
+            if (data.status === 'deleted') loadReports();
+            else alert('Ошибка');
+          });
+      }
     }
 
-    // === Меню ===
+    // Меню
     document.getElementById('menuToggle').onclick = () => {
       document.getElementById('sidebar').classList.add('active');
       document.getElementById('overlay').classList.add('active');
@@ -278,12 +232,12 @@
       document.getElementById('overlay').classList.remove('active');
     };
 
-    // === Telegram-каналы (без пробелов!) ===
+    // 🔗 Каналы (без пробелов!)
     document.getElementById('sosBtn').onclick = () => window.open('https://t.me/+WFDKSUr0XSgyMGI6', '_blank');
     document.getElementById('leaderboardBtn').onclick = () => window.open('https://t.me/+EAd7iBOKoBlkMGFi', '_blank');
     document.getElementById('newsBtn').onclick = () => window.open('https://t.me/raidroad64_news', '_blank');
 
-    // === Геолокация ===
+    // Геолокация
     document.getElementById('geolocate-btn').onclick = function() {
       if (!navigator.geolocation) return alert('Геолокация не поддерживается');
       const btn = this;
@@ -301,7 +255,7 @@
       );
     };
 
-    // === Поиск по улицам ===
+    // Поиск
     document.getElementById('search-input').onkeypress = e => {
       if (e.key === 'Enter') {
         const q = e.target.value.trim();
