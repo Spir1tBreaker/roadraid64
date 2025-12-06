@@ -5,7 +5,7 @@
   <title>Raidroad64 — карта ДПС Саратова</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/static/style.css">
-  <!-- Исправленный URL без пробелов -->
+  <!-- ИСПРАВЛЕНО: убраны пробелы в конце URL -->
   <script src="https://api-maps.yandex.ru/2.1/?apikey=be618309-d3fc-4f6c-ab23-f2579450d397&lang=ru_RU" type="text/javascript"></script>
 </head>
 <body>
@@ -94,7 +94,7 @@
     let map, selectedCoord = null;
     let placemarks = {};
     let currentUsername = '';
-    let currentPopup = null;
+    let activePopup = null;
 
     fetch('/api/me')
       .then(res => res.ok ? res.json() : Promise.reject())
@@ -162,7 +162,7 @@
             });
 
             placemark.events.add('click', () => {
-              showCustomPopup(r, currentUsername === r.username);
+              showStylishPopup(r, currentUsername === r.username);
             });
 
             placemarks[r.id] = placemark;
@@ -171,89 +171,101 @@
         });
     }
 
-    function showCustomPopup(report, isOwn) {
-      if (currentPopup) {
-        document.body.removeChild(currentPopup);
-        currentPopup = null;
+    function showStylishPopup(report, isOwn) {
+      if (activePopup) {
+        activePopup.remove();
+        activePopup = null;
       }
 
-      const popup = document.createElement('div');
-      popup.style.cssText = `
-        position: absolute;
-        background: #1a1a1a;
-        color: white;
-        border: 2px solid #ff3b30;
-        border-radius: 12px;
-        padding: 12px;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-        z-index: 1001;
-        font-size: 14px;
-        min-width: 180px;
-        max-width: 220px;
-      `;
-      popup.innerHTML = `
-        <div style="margin-bottom:8px;">
-          <b>${report.username}</b><br>
-          <small style="color:#aaa;">${report.time_str}</small>
+      const popupContent = `
+        <div style="
+          background: #1a1a1a;
+          color: white;
+          border: 2px solid #ff3b30;
+          border-radius: 12px;
+          padding: 14px;
+          box-shadow: 0 6px 20px rgba(255, 59, 48, 0.4);
+          font-size: 14px;
+          max-width: 200px;
+          animation: popupFadeIn 0.2s ease;
+        ">
+          <div style="margin-bottom: 10px;">
+            <b>${report.username}</b><br>
+            <small style="color: #aaa;">${report.time_str}</small>
+          </div>
+          <button id="popup-gone" style="
+            width: 100%;
+            padding: 8px;
+            background: #ff3b30;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s, background 0.2s;
+          ">🚗 Уехали</button>
+          ${isOwn ? `
+            <button id="popup-delete" style="
+              width: 100%;
+              margin-top: 8px;
+              padding: 8px;
+              background: #f44336;
+              color: white;
+              border: none;
+              border-radius: 6px;
+              cursor: pointer;
+              transition: transform 0.1s, background 0.2s;
+            ">🗑️ Удалить</button>
+          ` : ''}
         </div>
-        <button id="popup-gone-btn" style="
-          width:100%; padding:6px; background:#ff3b30; color:white;
-          border:none; border-radius:6px; font-weight:bold; cursor:pointer;
-        ">🚗 Уехали</button>
       `;
 
-      if (isOwn) {
-        popup.innerHTML += `
-          <button id="popup-delete-btn" style="
-            width:100%; margin-top:6px; padding:6px; background:#f44336; color:white;
-            border:none; border-radius:6px; cursor:pointer;
-          ">🗑️ Удалить</button>
-        `;
-      }
+      const hint = new ymaps.HtmlHint(popupContent);
+      map.hint.open([report.lat, report.lon], hint);
+      activePopup = hint;
 
-      document.body.appendChild(popup);
-      currentPopup = popup;
-
-      // Позиционируем попап
-      const pixelCoords = map.converter.globalToPage([report.lat, report.lon]);
-      popup.style.left = (pixelCoords[0] - 110) + 'px';
-      popup.style.top = (pixelCoords[1] - 120) + 'px';
-
-      // Закрытие по клику вне
-      const closeHandler = (e) => {
-        if (!popup.contains(e.target)) {
-          document.body.removeChild(popup);
-          currentPopup = null;
-          document.removeEventListener('click', closeHandler);
-        }
-      };
-      document.addEventListener('click', closeHandler);
-
-      // Обработчики
-      document.getElementById('popup-gone-btn').onclick = () => {
-        fetch('/api/vote', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ report_id: report.id, type: 'gone' })
-        }).then(() => {
-          if (currentPopup) document.body.removeChild(currentPopup);
-          currentPopup = null;
-          loadReports();
-        });
-      };
-
-      if (isOwn) {
-        document.getElementById('popup-delete-btn').onclick = () => {
-          if (confirm('Удалить метку?')) {
-            fetch(`/api/report/${report.id}`, { method: 'DELETE' })
-              .then(() => {
-                if (currentPopup) document.body.removeChild(currentPopup);
-                currentPopup = null;
-                loadReports();
-              });
+      // Анимация
+      if (!document.getElementById('popup-styles')) {
+        const style = document.createElement('style');
+        style.id = 'popup-styles';
+        style.innerHTML = `
+          @keyframes popupFadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
           }
-        };
+        `;
+        document.head.appendChild(style);
       }
+
+      // Обработчики кнопок
+      setTimeout(() => {
+        const goneBtn = document.getElementById('popup-gone');
+        if (goneBtn) {
+          goneBtn.onclick = () => {
+            fetch('/api/vote', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ report_id: report.id, type: 'gone' })
+            }).then(() => {
+              map.hint.close();
+              loadReports();
+            });
+          };
+        }
+
+        const deleteBtn = document.getElementById('popup-delete');
+        if (deleteBtn) {
+          deleteBtn.onclick = () => {
+            if (confirm('Удалить метку?')) {
+              fetch(`/api/report/${report.id}`, { method: 'DELETE' })
+                .then(() => {
+                  map.hint.close();
+                  loadReports();
+                });
+            }
+          };
+        }
+      }, 100);
     }
 
     // === Меню ===
@@ -266,7 +278,7 @@
       document.getElementById('overlay').classList.remove('active');
     };
 
-    // === Telegram-каналы ===
+    // === Telegram-каналы (без пробелов!) ===
     document.getElementById('sosBtn').onclick = () => window.open('https://t.me/+WFDKSUr0XSgyMGI6', '_blank');
     document.getElementById('leaderboardBtn').onclick = () => window.open('https://t.me/+EAd7iBOKoBlkMGFi', '_blank');
     document.getElementById('newsBtn').onclick = () => window.open('https://t.me/raidroad64_news', '_blank');

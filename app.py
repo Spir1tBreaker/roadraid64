@@ -97,24 +97,9 @@ def get_reports():
         conn = sqlite3.connect('reports.db')
         cur = conn.cursor()
         cur.execute("""
-            SELECT 
-                r.id, r.username, r.lat, r.lon, r.timestamp,
-                COALESCE(l.count, 0) as likes,
-                COALESCE(g.count, 0) as gone_count
-            FROM reports r
-            LEFT JOIN (
-                SELECT report_id, COUNT(*) as count 
-                FROM votes 
-                WHERE vote_type = 'like' 
-                GROUP BY report_id
-            ) l ON r.id = l.report_id
-            LEFT JOIN (
-                SELECT report_id, COUNT(*) as count 
-                FROM votes 
-                WHERE vote_type = 'gone' 
-                GROUP BY report_id
-            ) g ON r.id = g.report_id
-            WHERE r.timestamp > datetime('now', '-3 hours')
+            SELECT id, username, lat, lon, timestamp
+            FROM reports
+            WHERE timestamp > datetime('now', 'utc', '-3 hours')
         """)
         rows = cur.fetchall()
         conn.close()
@@ -139,8 +124,8 @@ def get_reports():
                 "lon": r[3],
                 "time_str": time_str,
                 "timestamp": r[4],
-                "likes": r[5],
-                "gone_count": r[6]
+                "likes": 0,
+                "gone_count": 0
             })
         return jsonify(reports)
     except Exception as e:
