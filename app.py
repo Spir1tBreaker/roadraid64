@@ -110,6 +110,7 @@ def get_reports():
     try:
         conn = sqlite3.connect('reports.db')
         cur = conn.cursor()
+        # ✅ Правильный фильтр по UTC (SQLite хранит как UTC)
         cur.execute("""
             SELECT 
                 r.id, r.username, r.lat, r.lon, r.timestamp,
@@ -128,7 +129,7 @@ def get_reports():
                 WHERE vote_type = 'gone' 
                 GROUP BY report_id
             ) g ON r.id = g.report_id
-            WHERE r.timestamp > datetime('now', 'utc', '-3 hours')
+            WHERE r.timestamp > datetime('now', '-3 hours')
         """)
         rows = cur.fetchall()
         conn.close()
