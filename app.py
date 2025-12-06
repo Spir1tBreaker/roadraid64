@@ -196,7 +196,7 @@ def vote():
     if not report_id or vote_type not in ('like', 'gone'):
         return jsonify({"error": "invalid data"}), 400
 
-    # Подключаем БД голосов
+    # Подключаем БД
     conn = sqlite3.connect('votes.db')
     cur = conn.cursor()
     cur.execute('''
@@ -209,32 +209,43 @@ def vote():
     ''')
     conn.commit()
 
-    # Нельзя голосовать за себя
+    # Проверка: не голосует ли за себя
     conn_reports = sqlite3.connect('reports.db')
     cur_reports = conn_reports.cursor()
     cur_reports.execute("SELECT username FROM reports WHERE id = ?", (report_id,))
     report = cur_reports.fetchone()
     if not report:
-        conn_reports.close()
-        conn.close()
+        conn_reports.close(); conn.close()
         return jsonify({"error": "report not found"}), 404
     if report[0] == voter:
-        conn_reports.close()
-        conn.close()
+        conn_reports.close(); conn.close()
         return jsonify({"error": "cannot vote for yourself"}), 400
     conn_reports.close()
 
-    # Проверяем, не голосовал ли уже
+    # Проверка: уже голосовал?
     cur.execute("SELECT 1 FROM votes WHERE report_id = ? AND voter_username = ?", (report_id, voter))
     if cur.fetchone():
         conn.close()
-        return jsonify({"error": "already voted", "voted": True}), 400
+        return jsonify({"error": "already voted"}), 400
 
     # Добавляем голос
     cur.execute("INSERT INTO votes (report_id, voter_username, vote_type) VALUES (?, ?, ?)",
                 (report_id, voter, vote_type))
     conn.commit()
     conn.close()
+
+    # 🔥 Если "уехали" — уменьшаем время метки на 10 минут
+    if vote_type == 'gone':
+        conn2 = sqlite3.connect('reports.db')
+        cur2 = conn2.cursor()
+        # Уменьшаем timestamp на 10 минут (600 секунд)
+        cur2.execute("""
+            UPDATE reports 
+            SET timestamp = datetime(timestamp, '-600 seconds')
+            WHERE id = ?
+        """, (report_id,))
+        conn2.commit()
+        conn2.close()
 
     return jsonify({"status": "voted"})
 

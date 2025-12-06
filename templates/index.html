@@ -156,10 +156,16 @@
           reports.forEach(r => {
             const timeDiff = new Date() - new Date(r.timestamp || '2025-01-01');
             const hoursAgo = timeDiff / (1000 * 60 * 60);
-            let color = '#888';
-            if (hoursAgo <= 0.5) color = '#ff0000';
-            else if (hoursAgo <= 1.5) color = '#ffcc00';
-            else if (hoursAgo <= 2) color = '#00aa00';
+            let color = null; // чтобы скрыть старые
+            if (hoursAgo <= 1) {
+              color = '#ff0000'; // 🔴 <1 часа
+            } else if (hoursAgo <= 2) {
+              color = '#ffcc00'; // 🟡 1–2 часа
+            } else if (hoursAgo <= 2.5) {
+              color = '#00aa00'; // 🟢 2–2.5 часа
+            }
+            // если >2.5 часов — не показываем (color = null)
+            if (!color) return; // пропускаем старые метки
 
             // ✅ Безопасная генерация — без onclick
             const content = `
@@ -238,12 +244,16 @@
       document.getElementById('overlay').classList.remove('active');
     });
 
-    document.querySelectorAll('.menu-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
-        this.style.transform = 'scale(0.97)';
-        setTimeout(() => this.style.transform = '', 150);
-      });
-    });
+        // === Кнопки меню → Telegram-каналы ===
+    document.getElementById('sosBtn').onclick = () => {
+      window.open('https://t.me/+WFDKSUr0XSgyMGI6', '_blank');
+    };
+    document.getElementById('leaderboardBtn').onclick = () => {
+      window.open('https://t.me/+EAd7iBOKoBlkMGFi', '_blank');
+    };
+    document.getElementById('newsBtn').onclick = () => {
+      window.open('https://t.me/raidroad64_news', '_blank');
+    };
 
     // === 📍 Геолокация ===
     document.getElementById('geolocate-btn').addEventListener('click', function() {
